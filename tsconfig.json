@@ -12,8 +12,9 @@
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "types": ["vite/client", "node"],
+    "baseUrl": "src", // This is required to make relative imports from the src directory
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["*"]
     }
   },
   "include": ["src"],
