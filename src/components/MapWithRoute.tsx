@@ -1,63 +1,124 @@
 import React, { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
-import { useSelector } from "react-redux";
+import mapboxgl, { LngLatLike } from "mapbox-gl";
+import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/app/store";
-
-// Add your Mapbox access token here
-const mapboxAccessToken =
-  "pk.eyJ1IjoicmF5bW9uZC1nYWt3YXlhIiwiYSI6ImNtOG90czMybzAzeWUyeHNmM3VnZ2RicHQifQ.8OOzBeLOLm8ex_3DFxfVCg";
+import { setLocations, setRoute, setLoading } from "@/features/trip/tripSlice";
+import { geocodeLocation, fetchRoute } from "@/utils/api";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 const MapWithRoute: React.FC = () => {
-  const trip = useSelector((state: RootState) => state.trip);
-  const { currentLocation, pickupLocation, dropoffLocation, route } = trip;
+  const dispatch = useDispatch();
+  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-  // Map reference
+  const {
+    currentLocation,
+    pickupLocation,
+    dropoffLocation,
+    locations,
+    route,
+    loading,
+  } = useSelector((state: RootState) => state.trip);
+
+  const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (mapContainer.current) {
-      // Initialize Mapbox map
-      const map = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v11", // Map style
-        center: [-122.4194, 37.7749], // Default center (San Francisco)
-        zoom: 8,
-        accessToken: mapboxAccessToken,
-      });
+    const fetchCoordinates = async () => {
+      dispatch(setLoading(true));
 
-      // Add markers for current, pickup, and dropoff locations
-      new mapboxgl.Marker().setLngLat([-122.4194, 37.7749]).addTo(map); // Current Location
-      new mapboxgl.Marker().setLngLat([-122.2711, 37.8044]).addTo(map); // Pickup Location
-      new mapboxgl.Marker().setLngLat([-122.4194, 37.7749]).addTo(map); // Dropoff Location
+      const currentCoords = await geocodeLocation(currentLocation);
+      const pickupCoords = await geocodeLocation(pickupLocation);
+      const dropoffCoords = await geocodeLocation(dropoffLocation);
 
-      // Add route (if available)
-      if (route) {
-        // Add your route drawing logic here (e.g., using a LineLayer or similar)
-        map.addSource("route", {
-          type: "geojson",
-          data: route, // Assuming the route is provided as a GeoJSON object
-        });
-
-        map.addLayer({
-          id: "routeLayer",
-          type: "line",
-          source: "route",
-          paint: {
-            "line-color": "#007cbf",
-            "line-width": 4,
-          },
-        });
+      if (currentCoords && pickupCoords && dropoffCoords) {
+        dispatch(
+          setLocations({
+            currentLocation: currentCoords as [number, number],
+            pickupLocation: pickupCoords as [number, number],
+            dropoffLocation: dropoffCoords as [number, number],
+          })
+        );
       }
 
-      return () => {
-        // Cleanup the map when the component is unmounted
-        map.remove();
-      };
+      dispatch(setLoading(false));
+    };
+
+    if (currentLocation && pickupLocation && dropoffLocation) {
+      fetchCoordinates();
     }
-  }, [route]);
+  }, [currentLocation, pickupLocation, dropoffLocation, dispatch]);
+
+  useEffect(() => {
+    if (locations) {
+      fetchRoute(locations).then((routeGeoJSON) => {
+        if (routeGeoJSON) {
+          dispatch(setRoute(routeGeoJSON));
+        }
+      });
+    }
+  }, [locations, dispatch]);
+
+  useEffect(() => {
+    if (mapContainer.current && !mapRef.current && locations) {
+      mapRef.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: "mapbox://styles/mapbox/streets-v11",
+        center: locations.currentLocation as LngLatLike,
+        zoom: 8,
+        accessToken: mapboxToken,
+      });
+
+      mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-left");
+
+      new mapboxgl.Marker({ color: "red" })
+        .setLngLat(locations.currentLocation as LngLatLike)
+        .addTo(mapRef.current);
+
+      new mapboxgl.Marker({ color: "green" })
+        .setLngLat(locations.pickupLocation as LngLatLike)
+        .addTo(mapRef.current);
+
+      new mapboxgl.Marker({ color: "blue" })
+        .setLngLat(locations.dropoffLocation as LngLatLike)
+        .addTo(mapRef.current);
+
+      mapRef.current.on("load", () => {
+        if (route) {
+          mapRef.current?.addSource("route", {
+            type: "geojson",
+            data: route,
+          });
+
+          mapRef.current?.addLayer({
+            id: "routeLayer",
+            type: "line",
+            source: "route",
+            layout: {
+              "line-join": "round",
+              "line-cap": "round",
+            },
+            paint: {
+              "line-color": "#007cbf",
+              "line-width": 4,
+            },
+          });
+        }
+      });
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [locations, route]);
 
   return (
-    <div ref={mapContainer} style={{ height: "500px", width: "100%" }}></div>
+    <div>
+      {loading && <p>Loading...</p>}
+      <div ref={mapContainer} style={{ height: "500px", width: "100%" }}></div>
+    </div>
   );
 };
 

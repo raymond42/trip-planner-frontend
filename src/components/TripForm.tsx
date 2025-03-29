@@ -13,14 +13,22 @@ const TripForm: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    dispatch(
-      setTripDetails({
-        currentLocation,
-        pickupLocation,
-        dropoffLocation,
-        cycleUsed,
-      })
-    );
+    // Only dispatch if all locations are provided and cycleUsed is a valid number
+    if (currentLocation && pickupLocation && dropoffLocation && cycleUsed > 0) {
+      // Dispatch the trip details to the Redux store
+      dispatch(
+        setTripDetails({
+          currentLocation,
+          pickupLocation,
+          dropoffLocation,
+          cycleUsed,
+        })
+      );
+    } else {
+      alert(
+        "Please fill in all fields and ensure cycle hours used is greater than 0."
+      );
+    }
   };
 
   return (
